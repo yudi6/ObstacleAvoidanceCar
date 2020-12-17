@@ -78,13 +78,15 @@ class ObstacleAvoidanceCar():
             binary_temp = binary.copy()
             binary_temp[binary_temp == 0] = 1
             binary_temp[binary_temp == 255] = 0
+            final_area=np.zeros(binary_temp.shape)
+            final_area[:,0:int(final_area.shape[1]/2-15)]=-1
+            final_area[:,int(final_area.shape[1]/2-15):int(final_area.shape[1]/2+15)]=0
+            final_area[:,int(final_area.shape[1]/2+15):]=1
             w = np.resize(np.arange(0,binary_temp.shape[0]), (binary_temp.shape[1],binary_temp.shape[0])).transpose()
-            pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/2)-15),1)
-            zero_area = np.zeros((binary_temp.shape[0],30))
-            neg_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/2)-15),-1)
-            final_area = np.concatenate([np.concatenate([neg_area,zero_area]),pos_area])
-            print(final_area.shape)
-            print(binary_temp.shape)
+            error=np.sum(final_area*binary_temp*w)
+            # print(error)
+            # print(final_area.shape)
+            # print(binary_temp.shape)
             cv2.imshow('image', binary)
             if cv2.waitKey(1) == 27:
                 break
