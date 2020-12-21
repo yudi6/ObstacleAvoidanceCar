@@ -13,8 +13,10 @@ class ObstacleAvoidanceCar():
 
         # self._motor(1)
         # PID控制
-        self.PID_control = PID(0.3,0.02)
+        self.PID_control = PID(0.2,0.02)
         self.PID_control.SetPoint = 0
+        self.PID_speed_control = PID(0.2,0.02)
+        self.PID_speed_control.SetPoint = 3
         self._run()
         # while True:
         #     self._get_image()
@@ -76,7 +78,7 @@ class ObstacleAvoidanceCar():
             # binary=binary[]
             # k = np.ones((4, 4), np.uint8)
             # binary = cv2.dilate(binary, k, iterations=3)
-            binary = binary[:, 160:480]
+            binary = binary[-10:, 160:480]
             # corners = cv2.goodFeaturesToTrack(binary, 20, 0.06, 50)
             # print(corners)
             # corners = np.int0(corners)
@@ -87,34 +89,53 @@ class ObstacleAvoidanceCar():
             binary_temp = binary.copy()
             binary_temp[binary_temp == 0] = 1
             binary_temp[binary_temp == 255] = 0
-            w = np.resize(np.array([50]*(binary_temp.shape[0]-55)+[200]*30+[500]*10+[2000]*15), (binary_temp.shape[1],binary_temp.shape[0])).transpose()
-            pos_pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-40),3)
-            pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),1)
-            zero_area = np.zeros((binary_temp.shape[0],100))
-            neg_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),-1)
-            neg_neg_area = np.full((binary_temp.shape[0], int(binary_temp.shape[1] / 4) - 40), -3)
-            final_area = np.concatenate((neg_neg_area,neg_area,zero_area,pos_area,pos_pos_area),axis=1)
-            result = np.sum(w*binary_temp*final_area)/(binary_temp.shape[0]*binary_temp.shape[1])
+            last_line = binary_temp[-1]
+            contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contours) == 0:
+                self._motor(-1)
+                continue
+            nearest = 0
+            for i in range(len(contours)):
+                M = cv2.moments(contours[i])
+                center_x = int(M["m10"] / (M["m00"]+0.00000001))
+                if abs(center_x - (480-160)/2) < abs(nearest - (480-160)/2):
+                    nearest = center_x
+            direction = nearest - (480-160)/2
+            # print(direction)
+            speed_now = 1.5
+            # w = np.resize(np.array([50]*(binary_temp.shape[0]-55)+[200]*30+[500]*10+[2000]*15), (binary_temp.shape[1],binary_temp.shape[0])).transpose()
+            # pos_pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-40),3)
+            # pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),1)
+            # zero_area = np.zeros((binary_temp.shape[0],100))
+            # neg_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),-1)
+            # neg_neg_area = np.full((binary_temp.shape[0], int(binary_temp.shape[1] / 4) - 40), -3)
+            # final_area = np.concatenate((neg_neg_area,neg_area,zero_area,pos_area,pos_pos_area),axis=1)
+            # result = np.sum(w*binary_temp*final_area)/(binary_temp.shape[0]*binary_temp.shape[1])
 
-            fraction = final_area * binary_temp
-            fraction = np.sum(fraction, axis=0)
-            np.diff(fraction)
-            new_error = (np.sum(fraction) / (binary_temp.shape[0] * binary_temp.shape[1]))*20
-            # if abs(result)>4:
-            #     new_error=0
-            print(result,new_error)
-            result+=new_error
-            self.PID_control.update(result)
-            print(self.PID_control.output)
-            speed_now = 0.5 / (abs(self.PID_control.output) + 5)
-            if abs(self.PID_control.output) < 0.5:
-                linear_time+=1
+            # fraction = final_area * binary_temp
+            # fraction = np.sum(fraction, axis=0)
+            # np.diff(fraction)
+            # new_error = (np.sum(fraction) / (binary_temp.shape[0] * binary_temp.shape[1]))*20
+            # # if abs(result)>4:
+            # #     new_error=0
+            # print(result,new_error)
+            # result+=new_error
+            self.PID_control.update(direction*np.sum(last_line))
+            # speed_now = 0.5 / (abs(self.PID_control.output) + 5)
+            # if abs(self.PID_control.output) < 0.5:
+            #     linear_time+=1
+            # else:
+            #     linear_time=0
+            # if linear_time>=3 and abs(self.PID_control.output) < 0.5:
+            #     speed_now = 1.5
+            print("direction:",self.PID_control.output)
+            self.PID_speed_control.update(abs(self.PID_control.output)/100)
+            print("speed:",self.PID_speed_control.output)
+            speed_now = 1.5+self.PID_speed_control.output*1.1 if abs(self.PID_control.output) < 200 else 1.5
+            if abs(self.PID_control.output) > 1000:
+                self._steer(1.5, self.PID_control.output*0.5 / 800)
             else:
-                linear_time=0
-            if linear_time>=3 and abs(self.PID_control.output) < 0.5:
-                speed_now = 1.5
-            # speed_now = 1.5 if abs(self.PID_control.output) < 0.5 else 0.5/(abs(self.PID_control.output)+10)
-            self._steer(speed_now,self.PID_control.output/5)
+                self._steer(speed_now,self.PID_control.output/1000)
             cv2.imshow('image', binary)
             if cv2.waitKey(1) == 27:
                 break
