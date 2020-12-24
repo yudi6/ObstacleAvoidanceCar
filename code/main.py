@@ -47,6 +47,8 @@ class ObstacleAvoidanceCar():
 
     def _get_image(self):
         _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
+        while len(image)==0:
+            _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
         sensor_image = np.array(image, dtype=np.uint8)
         # print(resolution)
         # RGB图片 resolution为图片大小
@@ -71,27 +73,14 @@ class ObstacleAvoidanceCar():
         while True:
             img = self._get_image()
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            # gray[gray==0]=255
             _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
-            #
-            # print(binary)
-            # binary=binary[]
-            # k = np.ones((4, 4), np.uint8)
-            # binary = cv2.dilate(binary, k, iterations=3)
-            binary = binary[-10:, 160:480]
-            # corners = cv2.goodFeaturesToTrack(binary, 20, 0.06, 50)
-            # print(corners)
-            # corners = np.int0(corners)
-            # for i in corners:
-            #     x, y = i.ravel()
-            #     cv2.circle(binary, (x, y), 3, 255, -1)
-            # plt.imshow(binary), plt.show()
+            binary = binary[-2:, 160:480]
             binary_temp = binary.copy()
-            binary_temp[binary_temp == 0] = 1
-            binary_temp[binary_temp == 255] = 0
-            last_line = binary_temp[-1]
+            cv2.imshow('image', binary_temp)
+            binary[binary == 0] = 1
+            binary[binary == 255] = 0#binary为0-1图
             # 获取边缘线
-            contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, cnt = cv2.findContours(binary.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if len(contours) == 0:
                 self._motor(-1)
                 continue
@@ -104,33 +93,8 @@ class ObstacleAvoidanceCar():
                     nearest = center_x
             # 确定方向
             direction = nearest - (480-160)/2
-            # print(direction)
-            # w = np.resize(np.array([50]*(binary_temp.shape[0]-55)+[200]*30+[500]*10+[2000]*15), (binary_temp.shape[1],binary_temp.shape[0])).transpose()
-            # pos_pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-40),3)
-            # pos_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),1)
-            # zero_area = np.zeros((binary_temp.shape[0],100))
-            # neg_area = np.full((binary_temp.shape[0],int(binary_temp.shape[1]/4)-10),-1)
-            # neg_neg_area = np.full((binary_temp.shape[0], int(binary_temp.shape[1] / 4) - 40), -3)
-            # final_area = np.concatenate((neg_neg_area,neg_area,zero_area,pos_area,pos_pos_area),axis=1)
-            # result = np.sum(w*binary_temp*final_area)/(binary_temp.shape[0]*binary_temp.shape[1])
-
-            # fraction = final_area * binary_temp
-            # fraction = np.sum(fraction, axis=0)
-            # np.diff(fraction)
-            # new_error = (np.sum(fraction) / (binary_temp.shape[0] * binary_temp.shape[1]))*20
-            # # if abs(result)>4:
-            # #     new_error=0
-            # print(result,new_error)
-            # result+=new_error
             # 方向PID的输入
-            self.PID_control.update(direction*np.sum(last_line))
-            # speed_now = 0.5 / (abs(self.PID_control.output) + 5)
-            # if abs(self.PID_control.output) < 0.5:
-            #     linear_time+=1
-            # else:
-            #     linear_time=0
-            # if linear_time>=3 and abs(self.PID_control.output) < 0.5:
-            #     speed_now = 1.5
+            self.PID_control.update(direction*np.sum(binary))
             print("direction:",self.PID_control.output)
             # 速度PID的输入
             self.PID_speed_control.update(abs(self.PID_control.output)/100)
@@ -141,7 +105,7 @@ class ObstacleAvoidanceCar():
                 self._steer(1.5, self.PID_control.output*0.5 / 800)
             else:
                 self._steer(speed_now,self.PID_control.output/1500)
-            cv2.imshow('image', binary)
+            
             if cv2.waitKey(1) == 27:
                 break
             # time.sleep(0.5)
