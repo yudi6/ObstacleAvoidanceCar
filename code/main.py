@@ -13,10 +13,10 @@ class ObstacleAvoidanceCar():
 
         # self._motor(1)
         # PID控制
-        self.PID_control = PID(0.2,0.02)
+        self.PID_control = PID(0.2,0.02,0.05)
         self.PID_control.SetPoint = 0
-        self.PID_speed_control = PID(0.2,0.02)
-        self.PID_speed_control.SetPoint = 4
+        # self.PID_speed_control = PID(0.2,0.02)
+        # self.PID_speed_control.SetPoint = 0.75
         self._run()
         # while True:
         #     self._get_image()
@@ -47,8 +47,6 @@ class ObstacleAvoidanceCar():
 
     def _get_image(self):
         _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
-        while len(image)==0:
-            _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
         sensor_image = np.array(image, dtype=np.uint8)
         # print(resolution)
         # RGB图片 resolution为图片大小
@@ -69,21 +67,25 @@ class ObstacleAvoidanceCar():
         _ = vrep.simxSetJointTargetVelocity(self.clientId, self.right_motor, speed + turn, vrep.simx_opmode_oneshot)
 
     def _run(self):
-        linear_time=0
+        speed_now = 4
+        error_before = 0
         while True:
             img = self._get_image()
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
-            binary = binary[-2:, 160:480]
-            binary_temp = binary.copy()
-            cv2.imshow('image', binary_temp)
-            binary[binary == 0] = 1
-            binary[binary == 255] = 0#binary为0-1图
-            # 获取边缘线
-            contours, cnt = cv2.findContours(binary.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if len(contours) == 0:
-                self._motor(-1)
-                continue
+            binary_copy = binary.copy()
+            binary_copy[binary_copy == 0] = 1
+            binary_copy[binary_copy == 255] = 0
+
+            binary_temp = binary_copy[-60:, 160:480].copy()
+            binary_speed = binary_copy[-(200+int(speed_now*25)):, 300:340].copy()
+            speed_p = np.sum(binary_speed)/(binary_speed.shape[0]*binary_speed.shape[1])
+            if speed_p > 0.5:
+                speed_now += (speed_p)*0.7
+            elif speed_p < 0.5:
+                speed_now = 4
+            print('speed:',speed_now)
+            contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             # 寻找离中点最近的线
             nearest = 0
             for i in range(len(contours)):
@@ -93,21 +95,16 @@ class ObstacleAvoidanceCar():
                     nearest = center_x
             # 确定方向
             direction = nearest - (480-160)/2
+            if np.sum(binary_temp[-1])/binary_temp.shape[0] < 0.05 or abs(error_before - direction) > 100:
+                self._steer(2,self.PID_control.output/20)
+                continue
+            error_before = direction
             # 方向PID的输入
-            self.PID_control.update(direction*np.sum(binary))
+            self.PID_control.update(direction)
             print("direction:",self.PID_control.output)
-            # 速度PID的输入
-            self.PID_speed_control.update(abs(self.PID_control.output)/100)
-            print("speed:",self.PID_speed_control.output)
-            speed_now = 1.5+self.PID_speed_control.output*4 if abs(self.PID_control.output) < 200 else 1.5
-            # 出现急转弯
-            if abs(self.PID_control.output) > 1000:
-                self._steer(1.5, self.PID_control.output*0.5 / 800)
-            else:
-                self._steer(speed_now,self.PID_control.output/1500)
-            
+            self._steer(speed_now,self.PID_control.output/30)
+            cv2.imshow('image', binary)
             if cv2.waitKey(1) == 27:
                 break
-            # time.sleep(0.5)
 
 car = ObstacleAvoidanceCar()
