@@ -13,7 +13,7 @@ class ObstacleAvoidanceCar():
 
         # self._motor(1)
         # PID控制
-        self.PID_control = PID(0.2,0.02,0.035)
+        self.PID_control = PID(0.2,0.01,0.015)
         self.PID_control.SetPoint = 0
         # self.PID_speed_control = PID(0.2,0.02)
         # self.PID_speed_control.SetPoint = 0.75
@@ -39,14 +39,18 @@ class ObstacleAvoidanceCar():
         vrep.simxFinish(-1)
         while True:
             # 连接
-            clientId = vrep.simxStart("127.0.0.1", 19999, True, True, 5000, 5)  # 建立和服务器的连接
+            clientId = vrep.simxStart("127.0.0.1", 19997, True, True, 5000, 5)  # 建立和服务器的连接
             if clientId != -1:  # 连接成功
                 print('connect successfully')
                 break
+        vrep.simxSynchronous(clientId,True); #Enable the synchronous mode (Blocking function call)
+        # 
         return clientId
 
     def _get_image(self):
         _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
+        while len(image)==0:
+            _, resolution, image = vrep.simxGetVisionSensorImage(self.clientId, self.vision_sensor, 0, vrep.simx_opmode_buffer)
         sensor_image = np.array(image, dtype=np.uint8)
         # print(resolution)
         # RGB图片 resolution为图片大小
@@ -67,9 +71,11 @@ class ObstacleAvoidanceCar():
         _ = vrep.simxSetJointTargetVelocity(self.clientId, self.right_motor, speed + turn, vrep.simx_opmode_oneshot)
 
     def _run(self):
-        speed_now = 4
+        speed_now = 8
         error_before = 0
+        vrep.simxStartSimulation(self.clientId,vrep.simx_opmode_oneshot)
         while True:
+            vrep.simxSynchronousTrigger(self.clientId)
             img = self._get_image()
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
