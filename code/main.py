@@ -44,7 +44,7 @@ class ObstacleAvoidanceCar():
                 print('connect successfully')
                 break
         vrep.simxSynchronous(clientId,True); #Enable the synchronous mode (Blocking function call)
-        # vrep.simxStartSimulation(clientId,simx_opmode_oneshot)
+        # 
         return clientId
 
     def _get_image(self):
@@ -73,6 +73,7 @@ class ObstacleAvoidanceCar():
     def _run(self):
         speed_now = 8
         error_before = 0
+        vrep.simxStartSimulation(self.clientId,vrep.simx_opmode_oneshot)
         while True:
             vrep.simxSynchronousTrigger(self.clientId)
             img = self._get_image()
