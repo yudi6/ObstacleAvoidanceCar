@@ -13,7 +13,7 @@ class ObstacleAvoidanceCar():
 
         # self._motor(1)
         # PID控制
-        self.PID_control = PID(0.2,0.02,0.05)
+        self.PID_control = PID(0.2,0.02,0.035)
         self.PID_control.SetPoint = 0
         # self.PID_speed_control = PID(0.2,0.02)
         # self.PID_speed_control.SetPoint = 0.75
@@ -76,14 +76,16 @@ class ObstacleAvoidanceCar():
             binary_copy = binary.copy()
             binary_copy[binary_copy == 0] = 1
             binary_copy[binary_copy == 255] = 0
-
             binary_temp = binary_copy[-60:, 160:480].copy()
             binary_speed = binary_copy[-(200+int(speed_now*25)):, 300:340].copy()
             speed_p = np.sum(binary_speed)/(binary_speed.shape[0]*binary_speed.shape[1])
             if speed_p > 0.5:
                 speed_now += (speed_p)*0.7
-            elif speed_p < 0.5:
-                speed_now = 4
+            elif speed_p <= 0.5 and speed_p > 0.1:
+                if speed_now > 3:
+                    speed_now = 3
+                else:
+                    speed_now = 0.86*speed_now+0.42
             print('speed:',speed_now)
             contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             # 寻找离中点最近的线
@@ -95,14 +97,21 @@ class ObstacleAvoidanceCar():
                     nearest = center_x
             # 确定方向
             direction = nearest - (480-160)/2
-            if np.sum(binary_temp[-1])/binary_temp.shape[0] < 0.05 or abs(error_before - direction) > 100:
-                self._steer(2,self.PID_control.output/20)
+            temp_p = np.sum(binary_temp[-4:,:]) / (binary_temp.shape[1]*4)
+            print(temp_p)
+            if temp_p < 0.05 or abs(error_before - direction) > 100:
+                self._steer(1.2,self.PID_control.output/24)
+                speed_now = 1.2
+                continue
+            if temp_p > 0.3:
+                self._steer(1.5,self.PID_control.output/50)
+                speed_now = 1.5
                 continue
             error_before = direction
             # 方向PID的输入
             self.PID_control.update(direction)
             print("direction:",self.PID_control.output)
-            self._steer(speed_now,self.PID_control.output/30)
+            self._steer(speed_now,self.PID_control.output/25)
             cv2.imshow('image', binary)
             if cv2.waitKey(1) == 27:
                 break
