@@ -78,11 +78,11 @@ class ObstacleAvoidanceCar():
             vrep.simxSynchronousTrigger(self.clientId)
             img = self._get_image()
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
+            _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)#480*640
             binary_copy = binary.copy()
             binary_copy[binary_copy == 0] = 1
             binary_copy[binary_copy == 255] = 0
-            binary_temp = binary_copy[-60:, 160:480].copy()
+            binary_temp = binary_copy[-60:, 160:480].copy()#下方的色块
             #   选择屏幕中间的一部分来控制速度
             binary_speed = binary_copy[-(250+int(speed_now*60)):, 300:340].copy()
             #   黑色块的比重
@@ -97,8 +97,56 @@ class ObstacleAvoidanceCar():
             #   比重特别低   正在转弯
             else:
                 speed_now = 3.5
-            print('speed:',speed_now)
+            # print('speed:',speed_now)
+
+            #   选择屏幕中间的一部分来判断是否出现虚线，也即dash
+            is_dash=False#判断是否是出现虚线。按照之前的判断方式，中间且下方黑色快很少有可能被判断为急转弯
+                         #新的方法是，采用一块较长较宽的区域，如果该区域内最大的黑色快事实上也很小，
+                         # 且出现多个连通分量则认为出现了虚线，不将它作为急转弯或交叉路口处理
+            binary_dash = binary_copy[100:-60, 140:500].copy()
+            binary_dash_temp=binary[100:-60, 140:500].copy()
+            cv2.imshow('binary_dash', binary_dash_temp)
+            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_dash.copy())
+            #找出最大连通域面积大小
+            max_area=0
+            for index in range(0,num_labels):
+                flag=False
+                for index1 in range(binary_dash.shape[0]):
+                    if flag:
+                        break
+                    for index2 in range(binary_dash.shape[1]):
+                        if flag:
+                            break
+                        if labels[index1][index2]==index:
+                            if binary_dash[index1][index2]==1:
+                                max_area=max(max_area,stats[index][-1])
+                            flag=True
+                            
+            print("max_area",max_area)
+            if max_area<4000 and num_labels>=3:#如果最大连通区域面积很小且有多个黑色连通区域，标志当前出现了虚线
+                is_dash=True
+            
+            #这部分代码是为了解决虚线并线的问题
+            #虚线并线会出现大幅抖动，针对这个问题，如果出现虚线，
+            #我们去查看更远的地方是否可以找到多个连通分量
+            #如果找到更多的连通分量，那么则用更大的区域计算方向
             contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if is_dash and len(contours)==1:
+                binary_temp1=binary_copy[-120:, 160:480].copy()
+                contours1, cnt1 = cv2.findContours(binary_temp1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if len(contours1)!=1:
+                    binary_temp=binary_temp1
+                    contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            #这部分代码用于解决虚线单线中下方突然什么都看不到的问题
+            #这一问题可能在较短的虚线时带来严重的抖动，因为可能突然什么都看不见了，
+            #原始的算法会无法更新direction
+            #我们需要不停的上移，直到看到黑色块为止
+            bias=480-60
+            while is_dash and len(contours)==0:
+                bias-=20
+                binary_temp=binary_copy[bias:bias+60, 160:480].copy()
+                contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             # 寻找离中线最近的轮廓    保存中点
             nearest = 0
             for i in range(len(contours)):
@@ -110,11 +158,15 @@ class ObstacleAvoidanceCar():
             direction = nearest - (480-160)/2
             black_partition = np.sum(binary_temp[-4:,:]) / (binary_temp.shape[1]*4)
             print("black_partition:",black_partition)
-            if black_partition < 0.05 and speed_p <= 0.2:
+            print("speed_p:",speed_p)
+
+            print("is_dash:",is_dash)
+            if black_partition < 0.05 and speed_p <= 0.2 and is_dash==False:#既然是虚线，就不可能是急转弯
                 print("急转弯")
-                self._steer(1.5,np.sign(self.PID_control.output)*1.5)
+                self._steer(1.3,np.sign(self.PID_control.output)*2)
                 speed_now = 1.5
-            elif black_partition > 0.6 or (abs(error_before - direction) > 100 and len(contours)!= 1):
+            elif (black_partition > 0.6 or (abs(error_before - direction) > 100 and len(contours)!= 1)) and is_dash==False:#既然是虚线，就不可能是交叉路口
+            #交叉路口或转弯并线，这时沿着之前的转弯角度小幅度前进
                 print("交叉路口")
                 self._steer(1.5,self.PID_control.output/50)
                 speed_now = 1.5
