@@ -44,7 +44,7 @@ class ObstacleAvoidanceCar():
                 print('connect successfully')
                 break
         vrep.simxSynchronous(clientId,True); #Enable the synchronous mode (Blocking function call)
-        # 
+        #
         return clientId
 
     def _get_image(self):
@@ -83,7 +83,7 @@ class ObstacleAvoidanceCar():
             binary_copy[binary_copy == 0] = 1
             binary_copy[binary_copy == 255] = 0
             binary_temp = binary_copy[-60:, 160:480].copy()
-            binary_speed = binary_copy[-(200+int(speed_now*25)):, 300:340].copy()
+            binary_speed = binary_copy[-(200+int(speed_now*40)):, 300:340].copy()
             speed_p = np.sum(binary_speed)/(binary_speed.shape[0]*binary_speed.shape[1])
             if speed_p > 0.5:
                 speed_now += (speed_p)*0.7
@@ -103,21 +103,23 @@ class ObstacleAvoidanceCar():
                     nearest = center_x
             # 确定方向
             direction = nearest - (480-160)/2
-            temp_p = np.sum(binary_temp[-4:,:]) / (binary_temp.shape[1]*4)
-            print(temp_p)
-            if temp_p < 0.05 or abs(error_before - direction) > 100:
-                self._steer(1.2,self.PID_control.output/24)
+            black_partition = np.sum(binary_temp[-4:,:]) / (binary_temp.shape[1]*4)
+            print("black_partition:",black_partition)
+            if black_partition < 0.05:
+                print("急转弯")
+                self._steer(1.2,np.sign(self.PID_control.output)/2)
                 speed_now = 1.2
-                continue
-            if temp_p > 0.3:
+            elif black_partition > 0.6 or (abs(error_before - direction) > 100 and len(contours)!= 1):
+                print("交叉路口")
                 self._steer(1.5,self.PID_control.output/50)
                 speed_now = 1.5
-                continue
-            error_before = direction
-            # 方向PID的输入
-            self.PID_control.update(direction)
-            print("direction:",self.PID_control.output)
-            self._steer(speed_now,self.PID_control.output/25)
+            else:
+                error_before = direction
+                # 方向PID的输入
+                self.PID_control.update(direction)
+                print("PID:",self.PID_control.output)
+                self._steer(speed_now,self.PID_control.output/10)
+            binary = binary[-60:, 160:480]
             cv2.imshow('image', binary)
             if cv2.waitKey(1) == 27:
                 break
