@@ -13,7 +13,7 @@ class ObstacleAvoidanceCar():
 
         # self._motor(1)
         # PID控制
-        self.PID_control = PID(0.2,0.01,0.015)
+        self.PID_control = PID(0.2,0.01,0.08)
         self.PID_control.SetPoint = 0
         # self.PID_speed_control = PID(0.2,0.02)
         # self.PID_speed_control.SetPoint = 0.75
@@ -71,7 +71,7 @@ class ObstacleAvoidanceCar():
         _ = vrep.simxSetJointTargetVelocity(self.clientId, self.right_motor, speed + turn, vrep.simx_opmode_oneshot)
 
     def _run(self):
-        speed_now = 8
+        speed_now = 6
         error_before = 0
         vrep.simxStartSimulation(self.clientId,vrep.simx_opmode_oneshot)
         while True:
@@ -83,18 +83,23 @@ class ObstacleAvoidanceCar():
             binary_copy[binary_copy == 0] = 1
             binary_copy[binary_copy == 255] = 0
             binary_temp = binary_copy[-60:, 160:480].copy()
-            binary_speed = binary_copy[-(200+int(speed_now*40)):, 300:340].copy()
+            #   选择屏幕中间的一部分来控制速度
+            binary_speed = binary_copy[-(250+int(speed_now*60)):, 300:340].copy()
+            #   黑色块的比重
             speed_p = np.sum(binary_speed)/(binary_speed.shape[0]*binary_speed.shape[1])
-            if speed_p > 0.5:
-                speed_now += (speed_p)*0.7
+            #  比重很多 直接为10
+            if speed_p > 0.5 and speed_p < 10:
+                speed_now = 10
+            #   比重还行    只减速不加速
             elif speed_p <= 0.5 and speed_p > 0.1:
-                if speed_now > 3:
-                    speed_now = 3
-                else:
-                    speed_now = 0.86*speed_now+0.42
+                if speed_now > 6:
+                    speed_now = 6
+            #   比重特别低   正在转弯
+            else:
+                speed_now = 3.5
             print('speed:',speed_now)
             contours, cnt = cv2.findContours(binary_temp.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # 寻找离中点最近的线
+            # 寻找离中线最近的轮廓    保存中点
             nearest = 0
             for i in range(len(contours)):
                 M = cv2.moments(contours[i])
@@ -105,10 +110,10 @@ class ObstacleAvoidanceCar():
             direction = nearest - (480-160)/2
             black_partition = np.sum(binary_temp[-4:,:]) / (binary_temp.shape[1]*4)
             print("black_partition:",black_partition)
-            if black_partition < 0.05:
+            if black_partition < 0.05 and speed_p <= 0.2:
                 print("急转弯")
-                self._steer(1.2,np.sign(self.PID_control.output)/2)
-                speed_now = 1.2
+                self._steer(1.5,np.sign(self.PID_control.output)*1.5)
+                speed_now = 1.5
             elif black_partition > 0.6 or (abs(error_before - direction) > 100 and len(contours)!= 1):
                 print("交叉路口")
                 self._steer(1.5,self.PID_control.output/50)
