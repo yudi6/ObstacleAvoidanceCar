@@ -132,7 +132,8 @@ class ObstacleAvoidanceCar():
             for index in range(0,num_labels):
                 if index!=white_label:
                     average_x+=abs(centroids[index][0]-(440 - 200) / 2)
-            average_x/=(num_labels-1)
+            if num_labels>=2:
+                average_x/=(num_labels-1)
             print("average_x:",average_x)
             if average_x>4:
                 is_dash=False
