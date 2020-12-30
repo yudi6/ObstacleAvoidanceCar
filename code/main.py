@@ -91,7 +91,7 @@ class ObstacleAvoidanceCar():
             if speed_p > 0.5 and speed_now < 10 and len(contours_speed) == 1:
                 speed_now = 12
             #   比重还行    只减速不加速
-            elif speed_p <= 0.5 and speed_p > 0.27:
+            elif speed_p <= 0.5 and speed_p > 0.15:
                 if speed_now > 6:
                     speed_now = 6
             #   比重特别低   正在转弯
@@ -135,7 +135,7 @@ class ObstacleAvoidanceCar():
             if num_labels>=2:
                 average_x/=(num_labels-1)
             print("average_x:",average_x)
-            if average_x>4:
+            if average_x>18:
                 is_dash=False
             if during_sharp_turn:
                 binary_temp = binary_temp[:, 80:-80]
@@ -181,7 +181,7 @@ class ObstacleAvoidanceCar():
                 speed_now = 1.5
                 no_dash = True
                 during_sharp_turn = True
-            elif (black_partition > 0.6 or (abs(error_before - direction) > 100 and len(
+            elif (black_partition > 0.5 or (abs(error_before - direction) > 100 and len(
                     contours) != 1)) and is_dash == False:  # 既然是虚线，就不可能是交叉路口
                 # 交叉路口或转弯并线，这时沿着之前的转弯角度小幅度前进
                 print("交叉路口")
